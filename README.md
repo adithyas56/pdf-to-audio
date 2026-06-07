@@ -2,6 +2,8 @@
 
 A free, open-source web app that converts any PDF book into audio — no API keys, no cost, completely free.
 
+🔗 **Live Demo:** https://pdf-to-audio-8q5u.onrender.com
+
 ## Features
 - 📤 Upload any PDF book
 - 🔊 Text-to-speech using browser's built-in voice engine
@@ -16,7 +18,7 @@ A free, open-source web app that converts any PDF book into audio — no API key
 - **Database:** SQLite
 - **TTS:** Web Speech API (free, built into browser)
 - **PDF Processing:** PyMuPDF
-- **Hosting:** Render.com
+- **Hosting:** Render.com (free tier)
 
 ## Run Locally
 ```bash
@@ -26,4 +28,4 @@ uvicorn main:app --reload
 Then open http://localhost:8000
 
 ## Deploy
-Deployed on Render.com — see [live demo](https://your-app.onrender.com)
+Deployed on Render.com — [Live Demo](https://pdf-to-audio-8q5u.onrender.com)
