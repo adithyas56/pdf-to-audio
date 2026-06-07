@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PDF to Audio</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+body{background:#f5f5f5;color:#1a1a1a;min-height:100vh}
+.topbar{background:#0F6E56;padding:16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100}
+.topbar h1{color:#fff;font-size:18px;font-weight:500}
+.topbar p{color:#9FE1CB;font-size:12px}
+.nav{display:flex;background:#fff;border-bottom:1px solid #eee;position:sticky;top:60px;z-index:99}
+.nav button{flex:1;padding:12px 4px;border:none;background:none;font-size:11px;color:#888;cursor:pointer;border-bottom:2px solid transparent;transition:all .2s}
+.nav button.active{color:#0F6E56;border-bottom-color:#0F6E56;font-weight:500}
+.screen{display:none;padding:16px;gap:12px;flex-direction:column;min-height:calc(100vh - 110px)}
+.screen.active{display:flex}
+.upload-zone{border:2px dashed #ccc;border-radius:16px;padding:40px 20px;text-align:center;cursor:pointer;background:#fff;transition:all .2s}
+.upload-zone:hover{border-color:#0F6E56;background:#f0faf6}
+.upload-zone i{font-size:40px;color:#0F6E56;display:block;margin-bottom:12px}
+.upload-zone h3{font-size:15px;color:#1a1a1a;margin-bottom:6px}
+.upload-zone p{font-size:12px;color:#888}
+.book-card{background:#fff;border-radius:16px;padding:14px;display:flex;gap:12px;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,0.08);cursor:pointer}
+.book-icon{width:48px;height:60px;border-radius:8px;background:#E1F5EE;display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+.book-info{flex:1;min-width:0}
+.book-title{font-size:14px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.book-meta{font-size:11px;color:#888;margin:3px 0 8px}
+.prog-bar{height:4px;background:#eee;border-radius:2px;overflow:hidden}
+.prog-fill{height:100%;background:#0F6E56;border-radius:2px;transition:width .3s}
+.badge{display:inline-block;font-size:10px;padding:2px 8px;border-radius:20px;font-weight:500;margin-left:6px}
+.badge-green{background:#E1F5EE;color:#085041}
+.badge-purple{background:#EEEDFE;color:#3C3489}
+.player-box{background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
+.player-title{font-size:16px;font-weight:500;margin-bottom:4px}
+.player-chapter{font-size:12px;color:#0F6E56;margin-bottom:16px}
+.player-text{font-size:13px;color:#555;line-height:1.7;background:#f9f9f9;padding:12px;border-radius:12px;border-left:3px solid #0F6E56;margin-bottom:16px;max-height:120px;overflow-y:auto}
+.controls{display:flex;align-items:center;justify-content:center;gap:24px;margin-bottom:16px}
+.ctrl-btn{background:none;border:none;font-size:24px;cursor:pointer;color:#888;transition:color .2s}
+.ctrl-btn:hover{color:#0F6E56}
+.play-btn{width:56px;height:56px;border-radius:50%;background:#0F6E56;border:none;cursor:pointer;font-size:24px;color:#fff;display:flex;align-items:center;justify-content:center;transition:transform .1s}
+.play-btn:active{transform:scale(0.95)}
+.seek-wrap{height:6px;background:#eee;border-radius:3px;cursor:pointer;position:relative;margin-bottom:8px}
+.seek-fill{height:100%;background:#0F6E56;border-radius:3px;width:0%}
+.seek-dot{width:14px;height:14px;border-radius:50%;background:#0F6E56;position:absolute;top:-4px;left:0;transform:translateX(-50%)}
+.time-row{display:flex;justify-content:space-between;font-size:11px;color:#aaa;margin-bottom:16px}
+.speed-row{display:flex;gap:8px;flex-wrap:wrap}
+.spd-btn{padding:4px 12px;border-radius:20px;border:1px solid #ddd;background:none;font-size:12px;cursor:pointer;color:#888;transition:all .2s}
+.spd-btn.active{background:#E1F5EE;color:#085041;border-color:#5DCAA5}
+.action-row{display:flex;gap:8px}
+.action-btn{flex:1;padding:10px;border-radius:12px;border:1px solid #eee;background:#fff;font-size:12px;cursor:pointer;color:#555;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .2s}
+.action-btn:hover{background:#f5f5f5}
+.chapter-item{background:#fff;border-radius:12px;padding:12px;display:flex;align-items:center;gap:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+.chapter-item.active{border:2px solid #0F6E56}
+.ch-num{width:32px;height:32px;border-radius:50%;background:#E1F5EE;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;color:#085041;flex-shrink:0}
+.ch-num.active{background:#0F6E56;color:#fff}
+.ch-title{font-size:13px;font-weight:500;flex:1}
+.ch-meta{font-size:11px;color:#888;margin-top:2px}
+.note-card{background:#fff;border-radius:12px;padding:12px;border-left:3px solid #534AB7;box-shadow:0 1px 3px rgba(0,0,0,0.06)}
+.note-time{font-size:11px;color:#534AB7;font-weight:500;margin-bottom:6px}
+.note-text{font-size:13px;color:#333;line-height:1.5}
+.modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:200;align-items:flex-end;justify-content:center}
+.modal.open{display:flex}
+.modal-box{background:#fff;border-radius:20px 20px 0 0;padding:20px;width:100%;max-width:500px}
+.modal-box h3{font-size:16px;font-weight:500;margin-bottom:12px}
+.modal-box textarea{width:100%;border:1px solid #ddd;border-radius:12px;padding:12px;font-size:14px;resize:none;height:100px;font-family:inherit}
+.modal-box button{width:100%;padding:12px;background:#0F6E56;color:#fff;border:none;border-radius:12px;font-size:15px;cursor:pointer;margin-top:10px}
+.section-label{font-size:11px;font-weight:500;color:#888;text-transform:uppercase;letter-spacing:.5px}
+.empty{text-align:center;padding:40px 20px;color:#aaa;font-size:14px}
+input[type=file]{display:none}
+.processing{background:#fff;border-radius:16px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,0.08);display:none}
+.processing.show{display:block}
+.proc-row{display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px}
+.proc-bar{height:6px;background:#eee;border-radius:3px;overflow:hidden;margin-bottom:16px}
+.proc-fill{height:100%;background:#0F6E56;border-radius:3px;transition:width .5s}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div>
+    <h1>📚 PDF to Audio</h1>
+    <p>Your free audiobook converter</p>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="active" onclick="showScreen('library')">📚 Library</button>
+  <button onclick="showScreen('player')">▶️ Player</button>
+  <button onclick="showScreen('chapters')">📑 Chapters</button>
+  <button onclick="showScreen('notes')">📝 Notes</button>
+</div>
+
+<!-- Library Screen -->
+<div class="screen active" id="screen-library">
+  <div class="upload-zone" onclick="document.getElementById('fileInput').click()">
+    <i>📤</i>
+    <h3>Tap to upload a PDF</h3>
+    <p>Any book, any size — completely free</p>
+  </div>
+  <input type="file" id="fileInput" accept=".pdf" onchange="uploadPDF(this)">
+
+  <div class="processing" id="processingBox">
+    <div class="proc-row"><span>📄 Extracting text</span><span id="step1Status">Waiting...</span></div>
+    <div class="proc-bar"><div class="proc-fill" id="step1Bar" style="width:0%"></div></div>
+    <div class="proc-row"><span>🔊 Preparing audio</span><span id="step2Status">Waiting...</span></div>
+    <div class="proc-bar"><div class="proc-fill" id="step2Bar" style="width:0%"></div></div>
+    <div style="font-size:12px;color:#888;text-align:center" id="procMsg">Processing...</div>
+  </div>
+
+  <div class="section-label">Your Books</div>
+  <div id="bookList"><div class="empty">No books yet. Upload a PDF to get started!</div></div>
+</div>
+
+<!-- Player Screen -->
+<div class="screen" id="screen-player">
+  <div class="player-box">
+    <div class="player-title" id="playerTitle">No book selected</div>
+    <div class="player-chapter" id="playerChapter">Go to library to pick a book</div>
+    <div class="player-text" id="playerText">Upload a PDF from the library tab to start listening.</div>
+    <div class="controls">
+      <button class="ctrl-btn" onclick="prevChapter()" title="Previous chapter">⏮</button>
+      <button class="ctrl-btn" onclick="skipBack()" title="Back 15s">↺</button>
+      <button class="play-btn" id="playBtn" onclick="togglePlay()">▶</button>
+      <button class="ctrl-btn" onclick="skipForward()" title="Forward 15s">↻</button>
+      <button class="ctrl-btn" onclick="nextChapter()" title="Next chapter">⏭</button>
+    </div>
+    <div class="seek-wrap" id="seekBar" onclick="seekTo(event)">
+      <div class="seek-fill" id="seekFill"></div>
+      <div class="seek-dot" id="seekDot"></div>
+    </div>
+    <div class="time-row">
+      <span id="currentTime">0:00</span>
+      <span id="totalTime">0:00</span>
+    </div>
+    <div class="speed-row">
+      <button class="spd-btn" onclick="setSpeed(0.5,this)">0.5x</button>
+      <button class="spd-btn" onclick="setSpeed(0.75,this)">0.75x</button>
+      <button class="spd-btn active" onclick="setSpeed(1,this)">1x</button>
+      <button class="spd-btn" onclick="setSpeed(1.5,this)">1.5x</button>
+      <button class="spd-btn" onclick="setSpeed(2,this)">2x</button>
+    </div>
+  </div>
+  <div class="action-row">
+    <button class="action-btn" onclick="showScreen('chapters')">📑 Chapters</button>
+    <button class="action-btn" onclick="saveBookmark()">🔖 Bookmark</button>
+    <button class="action-btn" onclick="openNoteModal()">📝 Add Note</button>
+  </div>
+</div>
+
+<!-- Chapters Screen -->
+<div class="screen" id="screen-chapters">
+  <div class="section-label">Chapters</div>
+  <div id="chapterList"><div class="empty">Open a book from the library first.</div></div>
+</div>
+
+<!-- Notes Screen -->
+<div class="screen" id="screen-notes">
+  <div class="section-label">Your Notes</div>
+  <div id="noteList"><div class="empty">No notes yet. Add notes while listening!</div></div>
+  <button class="action-btn" onclick="exportNotes()" style="margin-top:auto">📥 Export Notes</button>
+</div>
+
+<!-- Note Modal -->
+<div class="modal" id="noteModal">
+  <div class="modal-box">
+    <h3>Add a Note</h3>
+    <textarea id="noteText" placeholder="Write your note here..."></textarea>
+    <button onclick="submitNote()">Save Note</button>
+    <button onclick="closeNoteModal()" style="background:#f5f5f5;color:#555;margin-top:8px">Cancel</button>
+  </div>
+</div>
+
+<script>
+let currentBook = null;
+let chapters = [];
+let currentChapterIndex = 0;
+let synth = window.speechSynthesis;
+let utterance = null;
+let isPlaying = false;
+let charIndex = 0;
+let speed = 1;
+let voices = [];
+
+window.speechSynthesis.onvoiceschanged = () => { voices = synth.getVoices(); };
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('screen-' + name).classList.add('active');
+  const map = {library:0, player:1, chapters:2, notes:3};
+  if (map[name] !== undefined) document.querySelectorAll('.nav button')[map[name]].classList.add('active');
+  if (name === 'notes' && currentBook) loadNotes();
+}
+
+async function uploadPDF(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const box = document.getElementById('processingBox');
+  box.classList.add('show');
+  document.getElementById('step1Status').textContent = 'Processing...';
+  document.getElementById('step1Bar').style.width = '60%';
+  document.getElementById('procMsg').textContent = 'Reading your PDF...';
+  const formData = new FormData();
+  formData.append('file', file);
+  try {
+    const res = await fetch('/upload', {method:'POST', body: formData});
+    const data = await res.json();
+    if (data.success) {
+      document.getElementById('step1Bar').style.width = '100%';
+      document.getElementById('step1Status').textContent = 'Done ✓';
+      document.getElementById('step2Bar').style.width = '100%';
+      document.getElementById('step2Status').textContent = 'Ready ✓';
+      document.getElementById('procMsg').textContent = `Done! "${data.title}" is ready to listen.`;
+      setTimeout(() => { box.classList.remove('show'); loadBooks(); }, 2000);
+      openBook(data.book_id, data.title, data.chapters);
+    }
+  } catch(e) {
+    document.getElementById('procMsg').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function loadBooks() {
+  const res = await fetch('/books');
+  const data = await res.json();
+  const list = document.getElementById('bookList');
+  if (!data.books.length) {
+    list.innerHTML = '<div class="empty">No books yet. Upload a PDF to get started!</div>';
+    return;
+  }
+  list.innerHTML = data.books.map(b => `
+    <div class="book-card" onclick="openBookById('${b.id}')">
+      <div class="book-icon">📖</div>
+      <div class="book-info">
+        <div class="book-title">${b.title}</div>
+        <div class="book-meta">Tap to listen <span class="badge badge-green">Ready</span></div>
+        <div class="prog-bar"><div class="prog-fill" style="width:${b.progress}%"></div></div>
+      </div>
+      <span style="color:#ccc">›</span>
+    </div>
+  `).join('');
+}
+
+async function openBookById(id) {
+  const res = await fetch('/book/' + id);
+  const data = await res.json();
+  openBook(data.id, data.title, data.chapters);
+  showScreen('player');
+}
+
+function openBook(id, title, bookChapters) {
+  currentBook = {id, title};
+  chapters = bookChapters;
+  currentChapterIndex = 0;
+  loadChapterList();
+  loadCurrentChapter();
+  showScreen('player');
+}
+
+function loadChapterList() {
+  const list = document.getElementById('chapterList');
+  list.innerHTML = chapters.map((ch, i) => `
+    <div class="chapter-item ${i===currentChapterIndex?'active':''}" onclick="jumpToChapter(${i})">
+      <div class="ch-num ${i===currentChapterIndex?'active':''}">${i+1}</div>
+      <div>
+        <div class="ch-title">${ch.title}</div>
+        <div class="ch-meta">${Math.ceil(ch.text.length/800)} min read</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function loadCurrentChapter() {
+  if (!chapters.length) return;
+  const ch = chapters[currentChapterIndex];
+  document.getElementById('playerTitle').textContent = currentBook ? currentBook.title : '';
+  document.getElementById('playerChapter').textContent = ch.title;
+  document.getElementById('playerText').textContent = ch.text.substring(0, 300) + '...';
+  charIndex = 0;
+  updateSeek(0);
+  if (isPlaying) { synth.cancel(); startSpeaking(); }
+}
+
+function startSpeaking() {
+  if (!chapters.length) return;
+  const ch = chapters[currentChapterIndex];
+  const text = ch.text.substring(charIndex);
+  utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = speed;
+  if (voices.length) utterance.voice = voices.find(v => v.lang.startsWith('en')) || voices[0];
+  utterance.onboundary = (e) => {
+    charIndex += e.charIndex;
+    const progress = (charIndex / ch.text.length) * 100;
+    updateSeek(Math.min(progress, 100));
+    saveProgress(progress);
+  };
+  utterance.onend = () => { nextChapter(); };
+  synth.speak(utterance);
+}
+
+function togglePlay() {
+  if (!chapters.length) return;
+  if (isPlaying) {
+    synth.pause();
+    isPlaying = false;
+    document.getElementById('playBtn').textContent = '▶';
+  } else {
+    if (synth.paused) { synth.resume(); }
+    else { startSpeaking(); }
+    isPlaying = true;
+    document.getElementById('playBtn').textContent = '⏸';
+  }
+}
+
+function nextChapter() {
+  synth.cancel();
+  if (currentChapterIndex < chapters.length - 1) {
+    currentChapterIndex++;
+    charIndex = 0;
+    loadCurrentChapter();
+    loadChapterList();
+    if (isPlaying) startSpeaking();
+  } else {
+    isPlaying = false;
+    document.getElementById('playBtn').textContent = '▶';
+  }
+}
+
+function prevChapter() {
+  synth.cancel();
+  if (currentChapterIndex > 0) {
+    currentChapterIndex--;
+    charIndex = 0;
+    loadCurrentChapter();
+    loadChapterList();
+    if (isPlaying) startSpeaking();
+  }
+}
+
+function jumpToChapter(index) {
+  synth.cancel();
+  currentChapterIndex = index;
+  charIndex = 0;
+  loadCurrentChapter();
+  loadChapterList();
+  showScreen('player');
+  if (isPlaying) startSpeaking();
+}
+
+function skipForward() {
+  charIndex = Math.min(charIndex + 800, chapters[currentChapterIndex].text.length);
+  synth.cancel();
+  if (isPlaying) startSpeaking();
+}
+
+function skipBack() {
+  charIndex = Math.max(charIndex - 800, 0);
+  synth.cancel();
+  if (isPlaying) startSpeaking();
+}
+
+function setSpeed(s, btn) {
+  speed = s;
+  document.querySelectorAll('.spd-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (isPlaying) { synth.cancel(); startSpeaking(); }
+}
+
+function seekTo(e) {
+  const bar = document.getElementById('seekBar');
+  const pct = e.offsetX / bar.offsetWidth;
+  const ch = chapters[currentChapterIndex];
+  charIndex = Math.floor(pct * ch.text.length);
+  synth.cancel();
+  updateSeek(pct * 100);
+  if (isPlaying) startSpeaking();
+}
+
+function updateSeek(pct) {
+  document.getElementById('seekFill').style.width = pct + '%';
+  document.getElementById('seekDot').style.left = pct + '%';
+}
+
+function setSpeed(s, btn) {
+  speed = s;
+  document.querySelectorAll('.spd-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  if (isPlaying) { synth.cancel(); startSpeaking(); }
+}
+
+async function saveProgress(pct) {
+  if (!currentBook) return;
+  await fetch('/progress/' + currentBook.id, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({progress: pct})
+  });
+}
+
+function saveBookmark() {
+  if (!currentBook) return;
+  const ch = chapters[currentChapterIndex];
+  alert(`Bookmark saved!\nBook: ${currentBook.title}\nChapter: ${ch.title}`);
+}
+
+function openNoteModal() { document.getElementById('noteModal').classList.add('open'); }
+function closeNoteModal() { document.getElementById('noteModal').classList.remove('open'); document.getElementById('noteText').value = ''; }
+
+async function submitNote() {
+  const text = document.getElementById('noteText').value.trim();
+  if (!text || !currentBook) return;
+  const ch = chapters[currentChapterIndex];
+  await fetch('/note/' + currentBook.id, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({note: text, chapter: ch.title, timestamp: charIndex})
+  });
+  closeNoteModal();
+  alert('Note saved!');
+}
+
+async function loadNotes() {
+  if (!currentBook) return;
+  const res = await fetch('/notes/' + currentBook.id);
+  const data = await res.json();
+  const list = document.getElementById('noteList');
+  if (!data.notes.length) {
+    list.innerHTML = '<div class="empty">No notes yet. Add notes while listening!</div>';
+    return;
+  }
+  list.innerHTML = data.notes.map(n => `
+    <div class="note-card">
+      <div class="note-time">📍 ${n.chapter}</div>
+      <div class="note-text">${n.note}</div>
+    </div>
+  `).join('');
+}
+
+function exportNotes() {
+  if (!currentBook) { alert('Open a book first!'); return; }
+  fetch('/notes/' + currentBook.id).then(r => r.json()).then(data => {
+    if (!data.notes.length) { alert('No notes to export!'); return; }
+    const text = data.notes.map(n => `[${n.chapter}]\n${n.note}\n`).join('\n---\n\n');
+    const blob = new Blob([text], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (currentBook.title || 'notes') + '_notes.txt';
+    a.click();
+  });
+}
+
+loadBooks();
+</script>
+</body>
+</html>
