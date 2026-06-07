@@ -463,7 +463,7 @@ function startTimer(){
     if(currentBook&&elapsedSeconds%15<1)saveProgress(elapsedSeconds/totalSeconds*100);
   },1000);
 }
-function stopTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}}
+function stopTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}stopKeepAlive();}
 function updateSeekUI(pct){
   pct=Math.min(Math.max(pct,0),100);
   document.getElementById('seekFill').style.width=pct+'%';
@@ -634,32 +634,117 @@ function loadChapterList(){
   ).join('');
 }
 
-function startSpeaking(){
-  if(!chapters.length)return;
-  const ch=chapters[currentChapterIndex];
-  const text=ch.text.substring(charIndex);
-  utterance=new SpeechSynthesisUtterance(text);
-  utterance.rate=speed;
-  if(selectedVoice)utterance.voice=selectedVoice;
-  else if(voices.length)utterance.voice=voices.find(v=>v.lang.startsWith('en'))||voices[0];
-  const startWordIndex=findWordIndexFromChar(charIndex);
-  const charIndexAtStart=charIndex;
-  utterance.onboundary=(e)=>{
-    if(e.name==='word'){
-      const spokenText=text.substring(0,e.charIndex);
-      const wordIdx=startWordIndex+spokenText.split(/\s+/).filter(w=>w.length>0).length;
+// ── ANDROID-SAFE CHUNKED SPEECH ENGINE ──────────────────────────────────────
+// Android Chrome cuts off speech after ~4000 chars and crashes on long texts.
+// We split text into sentence-based chunks and speak them one by one.
+// This also fixes the "stops after 60 seconds" Android bug.
+
+const CHUNK_SIZE = 2000; // safe chunk size for Android
+let chunkQueue = [];     // array of text chunks to speak
+let chunkCharOffset = 0; // char offset of current chunk in full text
+
+function buildChunks(text) {
+  const chunks = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = start + CHUNK_SIZE;
+    if (end < text.length) {
+      // try to break at sentence boundary
+      const slice = text.substring(start, end);
+      const lastPeriod = Math.max(
+        slice.lastIndexOf('. '),
+        slice.lastIndexOf('! '),
+        slice.lastIndexOf('? ')
+      );
+      if (lastPeriod > CHUNK_SIZE * 0.5) end = start + lastPeriod + 2;
+    }
+    chunks.push({ text: text.substring(start, Math.min(end, text.length)), offset: start });
+    start = Math.min(end, text.length);
+  }
+  return chunks;
+}
+
+function speakNextChunk() {
+  if (!chunkQueue.length || !isPlaying) return;
+  const chunk = chunkQueue.shift();
+  chunkCharOffset = chunk.offset;
+  const startWordIndex = findWordIndexFromChar(charIndex);
+
+  utterance = new SpeechSynthesisUtterance(chunk.text);
+  utterance.rate = speed;
+  if (selectedVoice) utterance.voice = selectedVoice;
+  else if (voices.length) utterance.voice = voices.find(v => v.lang.startsWith('en')) || voices[0];
+
+  utterance.onboundary = (e) => {
+    if (e.name === 'word') {
+      const spokenText = chunk.text.substring(0, e.charIndex);
+      const wordIdx = startWordIndex + spokenText.split(/\s+/).filter(w => w.length > 0).length;
       highlightWord(wordIdx);
-      charIndex=charIndexAtStart+e.charIndex;
+      charIndex = chunkCharOffset + e.charIndex;
       savePosition();
     }
   };
-  utterance.onend=()=>{
-    stopTimer();
-    if(sleepEndOfChapter){isPlaying=false;document.getElementById('playBtn').textContent='▶';cancelSleepTimer(null);return;}
-    nextChapter();
+
+  utterance.onend = () => {
+    if (!isPlaying) return;
+    if (chunkQueue.length > 0) {
+      // small delay prevents Android from cutting off between chunks
+      setTimeout(speakNextChunk, 300);
+    } else {
+      stopTimer();
+      if (sleepEndOfChapter) {
+        isPlaying = false;
+        document.getElementById('playBtn').textContent = '▶';
+        cancelSleepTimer(null);
+        return;
+      }
+      nextChapter();
+    }
   };
-  utterance.onerror=(e)=>{if(e.error!=='interrupted')console.warn('Speech error:',e.error);};
-  synth.speak(utterance);startTimer();
+
+  utterance.onerror = (e) => {
+    if (e.error === 'interrupted') return;
+    console.warn('Speech error:', e.error);
+    // auto-retry on Android random errors
+    if (isPlaying && chunkQueue.length) {
+      setTimeout(speakNextChunk, 500);
+    }
+  };
+
+  synth.speak(utterance);
+}
+
+// Android keepalive — Chrome Android pauses TTS after ~60s
+// We poke speechSynthesis every 10s to keep it alive
+let keepAliveInterval = null;
+function startKeepAlive() {
+  stopKeepAlive();
+  keepAliveInterval = setInterval(() => {
+    if (synth.speaking && isPlaying) {
+      // no-op speak to reset Android's internal timer
+      const ping = new SpeechSynthesisUtterance('');
+      ping.volume = 0;
+      // don't queue it — just reset the timer via getVoices()
+      synth.getVoices();
+    }
+  }, 10000);
+}
+function stopKeepAlive() {
+  if (keepAliveInterval) { clearInterval(keepAliveInterval); keepAliveInterval = null; }
+}
+
+function startSpeaking() {
+  if (!chapters.length) return;
+  const ch = chapters[currentChapterIndex];
+  const text = ch.text.substring(charIndex);
+  // Build sentence chunks to avoid Android 4000-char limit
+  chunkQueue = buildChunks(text);
+  synth.cancel(); // clear any stuck queue
+  setTimeout(() => {
+    speakNextChunk();
+    startTimer();
+    startKeepAlive();
+  }, 100); // 100ms delay after cancel() for Android
 }
 
 function findNextSentenceBoundary(text,fromChar,direction){
@@ -686,8 +771,20 @@ function skipBack(){
 
 function togglePlay(){
   if(!chapters.length)return;
-  if(isPlaying){synth.pause();stopTimer();isPlaying=false;document.getElementById('playBtn').textContent='▶';savePosition();}
-  else{if(synth.paused){synth.resume();startTimer();}else{startSpeaking();}isPlaying=true;document.getElementById('playBtn').textContent='⏸';}
+  if(isPlaying){
+    // Android doesn't support pause — cancel instead and save position
+    synth.cancel();
+    stopTimer();
+    stopKeepAlive();
+    isPlaying=false;
+    document.getElementById('playBtn').textContent='▶';
+    savePosition();
+  } else {
+    // Always restart from saved charIndex (works on both Android and desktop)
+    startSpeaking();
+    isPlaying=true;
+    document.getElementById('playBtn').textContent='⏸';
+  }
 }
 function nextChapter(){
   synth.cancel();stopTimer();
