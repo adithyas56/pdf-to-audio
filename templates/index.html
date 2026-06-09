@@ -517,17 +517,43 @@ function speakChunks(chunks,chunkIdx,startWordIdx){
   // ── WORD HIGHLIGHTING ────────────────────────────────────────────────────
   // onboundary fires for each word — e.charIndex is position within THIS chunk
   // We count words spoken so far in this chunk and add startWordIdx offset
+  let boundaryFired=false;
+  let chunkStartTime=Date.now();
+  const chunkWords=chunk.text.split(/\s+/).filter(w=>w.length>0);
+  const msPerWord=chunkWords.length>0
+    ?(chunk.text.length/CHARS_PER_SECOND/speed*1000)/chunkWords.length
+    :200;
+  let fallbackInterval=null;
+  function startFallback(){
+    if(fallbackInterval)return;
+    fallbackInterval=setInterval(()=>{
+      const elapsed=Date.now()-chunkStartTime;
+      const wordIdx=Math.min(Math.floor(elapsed/msPerWord),chunkWords.length-1);
+      if(wordIdx>=0)highlightWord(startWordIdx+wordIdx);
+    },120);
+  }
+  const fallbackDelay=setTimeout(()=>{
+    if(!boundaryFired)startFallback();
+  },800);
   u.onboundary=(e)=>{
     if(e.name!=='word')return;
     try{
+      boundaryFired=true;
+      clearTimeout(fallbackDelay);
+      if(fallbackInterval){clearInterval(fallbackInterval);fallbackInterval=null;}
       const spokenSoFar=chunk.text.substring(0,e.charIndex);
       const wordsInChunk=spokenSoFar.split(/\s+/).filter(w=>w.length>0).length;
       const globalWordIdx=startWordIdx+wordsInChunk;
       highlightWord(globalWordIdx);
-      // update charIndex for position saving
       charIndex=chunk.charOffset+e.charIndex;
       savePosition();
     }catch(err){}
+  };
+  const _origEnd=u.onend;
+  u.onend=function(ev){
+    clearTimeout(fallbackDelay);
+    if(fallbackInterval){clearInterval(fallbackInterval);fallbackInterval=null;}
+    if(_origEnd)_origEnd.call(this,ev);
   };
 
   u.onend=()=>{
